@@ -1,6 +1,7 @@
 import { Component, NgZone } from '@angular/core';
 import { NavController } from 'ionic-angular';
 import { SpeechRecognition } from '@ionic-native/speech-recognition';
+import { SpinnerDialog } from '@ionic-native/spinner-dialog';
 
 @Component({
   selector: 'page-home',
@@ -11,7 +12,8 @@ export class HomePage {
   isListening: boolean = false;
   matches: Array<String>;
 
-  constructor(public navCtrl: NavController, private speechRecognition: SpeechRecognition, private zone: NgZone) {
+  constructor(public navCtrl: NavController, private speechRecognition: SpeechRecognition,
+    private zone: NgZone, private spinnerDialog: SpinnerDialog) {
 
     // Check feature available
     this.speechRecognition.isRecognitionAvailable().then(
@@ -22,9 +24,7 @@ export class HomePage {
           this.speechRecognition.hasPermission().then(
             (hasPermission: boolean) => {
               console.log('hasPermission' + hasPermission);
-              if (hasPermission) {
-                this.startListening();
-              } else {
+              if (!hasPermission) {
                 this.requestPermission();
               }
             })
@@ -37,17 +37,18 @@ export class HomePage {
     this.speechRecognition.requestPermission().then(
       () => {
         console.log('Granted');
-        this.startListening();
       },
       () => console.log('Denied')
     )
   }
 
   startListening() {
+    this.spinnerDialog.show("", "Listening ...");
     let $this = this;
     // Start the recognition process
-    this.speechRecognition.startListening({ showPopup: true }).subscribe(matches => {
+    this.speechRecognition.startListening({ showPopup: false }).subscribe(matches => {
       $this.zone.run(() => {
+        this.spinnerDialog.hide();
         $this.matches = matches;
       })
     }, error => console.error(error));
@@ -56,6 +57,7 @@ export class HomePage {
   stopListening() {
     // Stop the recognition process (iOS only)
     this.speechRecognition.stopListening();
+    this.spinnerDialog.hide();
   }
 
   listen(): void {
