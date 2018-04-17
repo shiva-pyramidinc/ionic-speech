@@ -5,9 +5,12 @@ import { SplashScreen } from '@ionic-native/splash-screen';
 import { StatusBar } from '@ionic-native/status-bar';
 import { SpeechRecognition } from '@ionic-native/speech-recognition';
 import { SpinnerDialog } from '@ionic-native/spinner-dialog';
+import { Media } from '@ionic-native/media';
+import { File } from '@ionic-native/file';
 
 import { MyApp } from './app.component';
 import { HomePage } from '../pages/home/home';
+import { VAD } from '../providers/vad';
 
 @NgModule({
   declarations: [
@@ -28,7 +31,10 @@ import { HomePage } from '../pages/home/home';
     SplashScreen,
     { provide: ErrorHandler, useClass: IonicErrorHandler },
     SpeechRecognition,
-    SpinnerDialog
+    SpinnerDialog,
+    Media,
+    File,
+    VAD
   ]
 })
 export class AppModule { }

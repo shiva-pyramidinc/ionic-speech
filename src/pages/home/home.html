@@ -7,7 +7,7 @@
 </ion-header>
 
 <ion-content padding>
-  <p>Is listening ? : {{ isListening }}</p>
+  <!-- <p>Is listening ? : {{ isListening }}</p>
   <button ion-button (click)="listen()">
     <div>
       <ion-icon name="mic">
@@ -21,4 +21,10 @@
       <p>{{ match }}</p>
     </ion-card-content>
   </ion-card>
+  <button ion-button (click)="startRecord()">Start record</button>
+  <button ion-button (click)="stopRecord()">stop record</button> -->
+
+  <button ion-button (click)="startCapture()" [disabled]="isCapturing">Start Capture</button>
+  <button ion-button (click)="stopCapture()" [disabled]="!isCapturing">Stop Capture</button>
+  <p *ngIf="isCapturing">{{ speechDetected ? 'Speech activity detected': 'no speech activity'}}</p>
 </ion-content>
