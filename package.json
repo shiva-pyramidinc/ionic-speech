@@ -30,6 +30,7 @@
     "@ionic-native/status-bar": "4.6.0",
     "@ionic/storage": "2.1.3",
     "cordova-android": "7.0.0",
+    "cordova-ios": "4.5.4",
     "cordova-plugin-audioinput": "^1.0.1",
     "cordova-plugin-compat": "^1.2.0",
     "cordova-plugin-device": "^2.0.1",
@@ -43,6 +44,7 @@
     "cordova-plugin-whitelist": "^1.3.3",
     "ionic-angular": "3.9.2",
     "ionicons": "3.0.0",
+    "ios-deploy": "^1.9.2",
     "rxjs": "5.5.8",
     "sw-toolbox": "3.6.0",
     "zone.js": "0.8.20"
@@ -66,7 +68,8 @@
       "cordova-plugin-audioinput": {}
     },
     "platforms": [
-      "android"
+      "android",
+      "ios"
     ]
   }
 }

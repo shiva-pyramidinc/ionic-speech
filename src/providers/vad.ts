@@ -26,6 +26,9 @@ export class VAD {
     iterationPeriod: number;
     iterationFrequency: number;
     hertzPerBin: number;
+    energies: number[] = [];
+    maxEnergy: number;
+    minEnergy: number;
     // Default options
     options = {
         fftSize: 512,
@@ -33,7 +36,7 @@ export class VAD {
         voice_stop: function () { },
         voice_start: function () { },
         smoothingTimeConstant: 0.99,
-        energy_offset: 1e-8, // The initial offset.
+        energy_offset: 1e-11, // The initial offset.
         energy_threshold_ratio_pos: 2, // Signal must be twice the offset
         energy_threshold_ratio_neg: 0.5, // Signal must be half the offset
         energy_integration: 1, // Size of integration change compared to the signal per second.
@@ -66,7 +69,7 @@ export class VAD {
         this.options.context = this.options.source.context;
         console.log('Calculate time relationships')
         // Calculate time relationships
-        console.log(JSON.stringify(this.options));
+        console.log(JSON.stringify(this.options.context));
         this.hertzPerBin = this.options.context.sampleRate / this.options.fftSize;
         this.iterationFrequency = this.options.context.sampleRate / this.options.bufferLen;
         this.iterationPeriod = 1 / this.iterationFrequency;
@@ -127,7 +130,7 @@ export class VAD {
         this.options.source.connect(this.scriptProcessorNode);
 
         // log stuff
-        this.logging = true;
+        this.logging = false;
         this.log_i = 0;
         this.log_limit = 100;
     }
@@ -190,13 +193,21 @@ export class VAD {
 
     monitor() {
         var energy = this.getEnergy();
+        console.log("energy");
+        console.log(energy);
         var signal = energy - this.energy_offset;
-
+        this.energies.push(signal);
+        console.log("signal"); console.log(signal);
+        console.log("energy_threshold_pos"); console.log(this.energy_threshold_pos);
+        console.log("energy_threshold_neg"); console.log(this.energy_threshold_neg);
         if (signal > this.energy_threshold_pos) {
+            console.log("signal greater than threshold");
             this.voiceTrend = (this.voiceTrend + 1 > this.voiceTrendMax) ? this.voiceTrendMax : this.voiceTrend + 1;
         } else if (signal < -this.energy_threshold_neg) {
+            console.log("signal less than threshold");
             this.voiceTrend = (this.voiceTrend - 1 < this.voiceTrendMin) ? this.voiceTrendMin : this.voiceTrend - 1;
         } else {
+            console.log("VoiceTrend gets smaller");
             // voiceTrend gets smaller
             if (this.voiceTrend > 0) {
                 this.voiceTrend--;
@@ -204,14 +215,23 @@ export class VAD {
                 this.voiceTrend++;
             }
         }
-
+        this.energies = this.energies.sort();
+        this.maxEnergy = this.energies[this.energies.length - 1];
+        this.minEnergy = this.energies[0];
+        console.log("maxEnergy"); console.log(this.maxEnergy);
+        console.log("minEnergy"); console.log(this.minEnergy);
+        // console.log("voiceTrend"); console.log(this.voiceTrend);
+        // console.log("voiceTrendStart"); console.log(this.voiceTrendStart);
+        // console.log("voiceTrendEnd"); console.log(this.voiceTrendEnd);
         var start = false, end = false;
         if (this.voiceTrend > this.voiceTrendStart) {
             // Start of speech detected
             start = true;
+            console.log("Start of speech detected")
         } else if (this.voiceTrend < this.voiceTrendEnd) {
             // End of speech detected
             end = true;
+            console.log("End of speech detected")
         }
 
         // Integration brings in the real-time aspect through the relationship with the frequency this functions is called.
@@ -229,16 +249,20 @@ export class VAD {
         this.energy_threshold_pos = this.energy_offset * this.options.energy_threshold_ratio_pos;
         this.energy_threshold_neg = this.energy_offset * this.options.energy_threshold_ratio_neg;
 
+        // console.log("start"); console.log(start);
+        // console.log("vadState"); console.log(this.vadState);
+        // console.log("end"); console.log(end);
         // Broadcast the messages
         if (start && !this.vadState) {
+            console.log('voice start triggered');
             this.vadState = true;
             this.options.voice_start();
-            console.log('voice start triggered');
         }
         if (end && this.vadState) {
+            console.log('voice end triggered');
             this.vadState = false;
             this.options.voice_stop();
-            console.log('voice end triggered');
+
         }
 
         this.log(

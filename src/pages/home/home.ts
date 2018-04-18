@@ -6,7 +6,7 @@ import { Media, MediaObject } from '@ionic-native/media';
 import { File } from '@ionic-native/file';
 import { VAD } from '../../providers/vad';
 declare let audioinput: any;
-
+declare let webkitAudioContext: any;
 @Component({
   selector: 'page-home',
   templateUrl: 'home.html'
@@ -21,7 +21,7 @@ export class HomePage {
   filePath: string;
   audio: MediaObject;
   mediaTimer;
-  audioDataBuffer: any = [];
+  audioDataBuffer = [];
   totalReceivedData = 0;
   audioStream: MediaStream;
   isCapturing: boolean = false;
@@ -30,7 +30,9 @@ export class HomePage {
   constructor(public navCtrl: NavController, private speechRecognition: SpeechRecognition,
     private zone: NgZone, private spinnerDialog: SpinnerDialog, private media: Media, public platform: Platform, private file: File,
     private vad: VAD) {
+
     this.platform.ready().then(() => {
+      // this.shimGetUserMedia(window);
       this.captureAudio();
     })
   }
@@ -153,34 +155,62 @@ export class HomePage {
     });
   }
 
+  shimGetUserMedia(window) {
+    console.log('shimGetUserMedia')
+    var navigator = window && window.navigator;
+
+    if (!navigator.getUserMedia) {
+      console.log('getUserMedia')
+      if (navigator.webkitGetUserMedia) {
+        console.log('webkitGetUserMedia')
+        navigator.getUserMedia = navigator.webkitGetUserMedia.bind(navigator);
+      } else if (navigator.mediaDevices &&
+        navigator.mediaDevices.getUserMedia) {
+        console.log('mediaDevices')
+        navigator.getUserMedia = function (constraints, cb, errcb) {
+          navigator.mediaDevices.getUserMedia(constraints)
+            .then(cb, errcb);
+        }.bind(navigator);
+      } else {
+        console.log('None exist', JSON.stringify(navigator));
+      }
+    } else {
+      console.log('getUserMedia exists', navigator.getUserMedia)
+    }
+  }
+
   startCapture() {
+    try {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        this.isCapturing = true;
+        console.log("successCb");
+        console.log(stream);
+        this.audioStream = stream;
+        this.audioContext = new AudioContext();
+        this.streamSource = this.audioContext.createMediaStreamSource(stream);
+        var options = {
+          source: this.streamSource,
+          voice_stop: () => { console.log('voice_stop'); this.updateSpeechDetectionStatus(false); },
+          voice_start: () => { console.log('voice_start'); this.updateSpeechDetectionStatus(true); }
+        };
 
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      this.isCapturing = true;
-      console.log("successCb");
-      console.log(stream);
-      this.audioStream = stream;
-      this.audioContext = new AudioContext();
-      this.streamSource = this.audioContext.createMediaStreamSource(stream);
-      var options = {
-        source: this.streamSource,
-        voice_stop: () => { console.log('voice_stop'); this.updateSpeechDetectionStatus(false); },
-        voice_start: () => { console.log('voice_start'); this.updateSpeechDetectionStatus(true); }
-      };
+        // Create VAD
+        this.vad.startVAD(options);
 
-      // Create VAD
-      this.vad.startVAD(options);
-
-    }).catch(err => {
-      console.log("err");
-      console.log(JSON.stringify(err));
-      this.isCapturing = false;
-    });
+      }).catch(err => {
+        console.log("err");
+        console.log(JSON.stringify(err));
+        this.isCapturing = false;
+      });
+    } catch (e) {
+      console.log('e', JSON.stringify(e));
+      this.audioInputTest();
+    }
   }
 
   stopCapture() {
     try {
-      // this.audioStream.stop();
+      audioinput.stop();
       var track = this.audioStream.getTracks()[0];  // if only one media track
       track.stop();
       this.streamSource.disconnect();
@@ -197,27 +227,31 @@ export class HomePage {
     })
   }
 
-  foo() {
+  audioInputTest() {
+    this.isCapturing = true;
     audioinput.start({
-      streamToWebAudio: false,
+      streamToWebAudio: true,
       debug: true
     });
-    let audioContext = new AudioContext();
+    console.log('define audioContext');
+    console.dirxml(window); console.log('foo')
+    // let audioContext = new (AudioContext || webkitAudioContext)();
     // Connect the audioinput to the device speakers in order to hear the captured sound.
+    let audioContext = audioinput.getAudioContext();
     // audioinput.connect(audioContext.destination);
 
-    let analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    audioinput.connect(analyser);
-    var source = audioContext.createMediaStreamSource(this.audioDataBuffer);
+    // let analyser = audioContext.createAnalyser();
+    // analyser.fftSize = 2048;
+    // audioinput.connect(analyser);
 
+    var self = this;
 
     function onAudioInput(evt) {
 
       try {
         if (evt && evt.data) {
-          this.totalReceivedData += evt.data.length; // Increase the debug counter for received data
-          this.audioDataBuffer = this.audioDataBuffer.concat(evt.data); // Add the chunk to the buffer
+          self.totalReceivedData += evt.data.length; // Increase the debug counter for received data
+          self.audioDataBuffer = self.audioDataBuffer.concat(evt.data); // Add the chunk to the buffer
         }
       }
       catch (ex) {
@@ -225,12 +259,12 @@ export class HomePage {
       }
       // 'evt.data' is an integer array containing raw audio data
       //   
-      console.log("Audio data received: " + evt.data.length + " samples");
+      // console.log("Audio data received: " + evt.data.length + " samples");
       // Define function called by getUserMedia 
       // function startUserMedia(stream) {
       // Create MediaStreamAudioSourceNode
 
-      console.log('source');
+      // console.log('source');
       // console.log(source);
       // Setup options
       // var options = {
@@ -259,8 +293,27 @@ export class HomePage {
     window.addEventListener("audioinputerror", onAudioInputError, false);
 
     console.log('isCapturing', audioinput.isCapturing());
+    console.log('getAudioContext');
+    try {
+      var dest = audioContext.createMediaStreamDestination();
+      audioinput.connect(dest);
+      var streamSource = audioContext.createMediaStreamSource(dest.stream);
+      // var streamSource = dest.stream;
+      console.log('streamSource');
+      console.log(streamSource);
+      var options = {
+        source: streamSource,
+        voice_stop: () => { console.log('voice_stop'); this.updateSpeechDetectionStatus(false); },
+        voice_start: () => { console.log('voice_start'); this.updateSpeechDetectionStatus(true); }
+      };
+      console.log('Create VAD');
+      // Create VAD
+      this.vad.startVAD(options);
 
-
+    } catch (e) {
+      console.log('ERRR')
+      console.log(JSON.stringify(e));
+    }
 
   }
 
