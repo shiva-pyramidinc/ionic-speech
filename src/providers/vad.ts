@@ -2,8 +2,6 @@ import { Injectable } from "@angular/core";
 
 @Injectable()
 export class VAD {
-
-
     energy: any;
     filter: any[];
     log_limit: number;
@@ -26,13 +24,18 @@ export class VAD {
     iterationPeriod: number;
     iterationFrequency: number;
     hertzPerBin: number;
+    signals: number[] = [];
+    maxSignal: number;
+    minSignal: number;
+    voiceTrendArr = [];
+    signalTrend = [];
     // Default options
     options = {
-        fftSize: 512,
-        bufferLen: 512,
+        fftSize: 1024,
+        bufferLen: 1024,
         voice_stop: function () { },
         voice_start: function () { },
-        smoothingTimeConstant: 0.99,
+        smoothingTimeConstant: 0.9,
         energy_offset: 1e-8, // The initial offset.
         energy_threshold_ratio_pos: 2, // Signal must be twice the offset
         energy_threshold_ratio_neg: 0.5, // Signal must be half the offset
@@ -64,7 +67,6 @@ export class VAD {
         console.log('Set this.options.context')
         // Set this.options.context
         this.options.context = this.options.source.context;
-        console.log('Calculate time relationships')
         // Calculate time relationships
         console.log(JSON.stringify(this.options));
         this.hertzPerBin = this.options.context.sampleRate / this.options.fftSize;
@@ -79,12 +81,10 @@ export class VAD {
             ' | iterationFrequency: ' + this.iterationFrequency +
             ' | iterationPeriod: ' + this.iterationPeriod
         );
-        console.log('setFilter')
         this.setFilter(this.options.filter);
 
         this.ready = {};
         this.vadState = false; // True when Voice Activity Detected
-        console.log('Energy detector props')
         // Energy detector props
         this.energy_offset = this.options.energy_offset;
         this.energy_threshold_pos = this.energy_offset * this.options.energy_threshold_ratio_pos;
@@ -95,26 +95,20 @@ export class VAD {
         this.voiceTrendMin = -10;
         this.voiceTrendStart = 5;
         this.voiceTrendEnd = -5;
-        console.log('Create analyser')
         // Create analyser 
         this.analyser = this.options.context.createAnalyser();
         this.analyser.smoothingTimeConstant = this.options.smoothingTimeConstant; // 0.99;
         this.analyser.fftSize = this.options.fftSize;
 
         this.floatFrequencyData = new Float32Array(this.analyser.frequencyBinCount);
-        console.log('Setup local storage of the Linear FFT data')
         // Setup local storage of the Linear FFT data
         this.floatFrequencyDataLinear = new Float32Array(this.floatFrequencyData.length);
-        console.log('Connect this.analyser')
         // Connect this.analyser
         this.options.source.connect(this.analyser);
-        console.log('Create ScriptProcessorNode')
         // Create ScriptProcessorNode
         this.scriptProcessorNode = this.options.context.createScriptProcessor(this.options.bufferLen, 1, 1);
-        console.log('Connect scriptProcessorNode')
         // Connect scriptProcessorNode (Theretically, not required)
         this.scriptProcessorNode.connect(this.options.context.destination);
-        console.log('Create callback to update/analyze floatFrequencyData')
         // Create callback to update/analyze floatFrequencyData
         var self = this;
         this.scriptProcessorNode.onaudioprocess = function (event) {
@@ -127,13 +121,12 @@ export class VAD {
         this.options.source.connect(this.scriptProcessorNode);
 
         // log stuff
-        this.logging = true;
+        this.logging = false;
         this.log_i = 0;
         this.log_limit = 100;
     }
 
     setFilter(shape) {
-        console.log('setFilter')
         this.filter = [];
         for (var i = 0, iLen = this.options.fftSize / 2; i < iLen; i++) {
             this.filter[i] = 0;
@@ -189,14 +182,23 @@ export class VAD {
     }
 
     monitor() {
-        var energy = this.getEnergy();
-        var signal = energy - this.energy_offset;
 
+        var energy = this.getEnergy();
+        // console.log('energy'); console.log(energy);
+        var signal = energy - this.energy_offset;
+        this.signals.push(energy);
+        // console.log('energy_offset'); console.log(this.energy_offset);
+        // console.log('signal'); console.log(signal);
+        // console.log('energy_threshold_pos'); console.log(this.energy_threshold_pos);
+        // console.log('energy_threshold_neg'); console.log(this.energy_threshold_neg);
         if (signal > this.energy_threshold_pos) {
+            // console.log('signal > this.energy_threshold_pos');
             this.voiceTrend = (this.voiceTrend + 1 > this.voiceTrendMax) ? this.voiceTrendMax : this.voiceTrend + 1;
         } else if (signal < -this.energy_threshold_neg) {
+            // console.log('signal < -this.energy_threshold_neg')
             this.voiceTrend = (this.voiceTrend - 1 < this.voiceTrendMin) ? this.voiceTrendMin : this.voiceTrend - 1;
         } else {
+            // console.log('voiceTrend gets smaller')
             // voiceTrend gets smaller
             if (this.voiceTrend > 0) {
                 this.voiceTrend--;
@@ -204,16 +206,26 @@ export class VAD {
                 this.voiceTrend++;
             }
         }
-
+        this.signals = this.signals.sort();
+        this.maxSignal = this.signals[this.signals.length - 1];
+        this.minSignal = this.signals[0]
+        // console.log("maxSignal"); console.log(this.maxSignal);
+        // console.log("minSignal"); console.log(this.minSignal);
         var start = false, end = false;
+        // console.log("voiceTrend"); console.log(this.voiceTrend);
+        this.voiceTrendArr.push(this.voiceTrend);
+        this.signalTrend.push(signal);
         if (this.voiceTrend > this.voiceTrendStart) {
             // Start of speech detected
+            // console.log("Start of speech detected");
             start = true;
+
         } else if (this.voiceTrend < this.voiceTrendEnd) {
             // End of speech detected
+            // console.log("End of speech detected");
             end = true;
-        }
 
+        }
         // Integration brings in the real-time aspect through the relationship with the frequency this functions is called.
         var integration = signal * this.iterationPeriod * this.options.energy_integration;
 
@@ -234,11 +246,17 @@ export class VAD {
             this.vadState = true;
             this.options.voice_start();
             console.log('voice start triggered');
+            // this.voiceTrendArr = [];
+            // this.signalTrend = [];
         }
         if (end && this.vadState) {
             this.vadState = false;
             this.options.voice_stop();
+            // console.log('energy_threshold_pos'); console.log(this.energy_threshold_pos);
+            // console.log('energy_threshold_neg'); console.log(this.energy_threshold_neg);
             console.log('voice end triggered');
+            // console.log(this.voiceTrendArr)
+            // console.log(this.signalTrend);
         }
 
         this.log(
